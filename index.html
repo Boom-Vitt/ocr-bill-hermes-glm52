@@ -15,6 +15,7 @@
       --border: #2a2e3a;
       --danger: #ef4444;
       --success: #22c55e;
+      --warning: #f59e0b;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -159,7 +160,79 @@
       header h1 { font-size: 1.4rem; }
       .upload-zone { padding: 24px; }
       .preview { flex-direction: column; }
+      th, td { padding: 10px 8px; }
+      .stats { grid-template-columns: 1fr; }
     }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .stat-card .label { color: var(--muted); font-size: .8rem; }
+    .stat-card .value { color: var(--accent2); font-size: 1.35rem; font-weight: 700; margin-top: 4px; }
+
+    .editor {
+      display: none;
+      margin-top: 24px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .editor.active { display: block; }
+    .editor h3 { margin-bottom: 14px; color: var(--accent2); }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { color: var(--muted); font-size: .82rem; }
+    .field input, .field textarea, .field select {
+      background: #111522;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .field textarea { min-height: 80px; resize: vertical; }
+    .field.full { grid-column: 1 / -1; }
+    .settings {
+      margin-top: 20px;
+      background: rgba(79, 158, 255, .08);
+      border: 1px solid rgba(79, 158, 255, .22);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .settings summary { cursor: pointer; color: var(--accent2); font-weight: 700; }
+    .settings .form-grid { margin-top: 14px; }
+    .hint { color: var(--muted); font-size: .82rem; margin-top: 8px; line-height: 1.5; }
+    .confidence {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: .85rem;
+      margin-top: 10px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(79, 158, 255, .12);
+      color: var(--accent2);
+      font-size: .75rem;
+    }
+    @media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -184,10 +257,70 @@
     <!-- Actions -->
     <div class="actions">
       <button id="ocrBtn" disabled onclick="runOCR()">🔍 เริ่ม OCR</button>
+      <button class="secondary" onclick="openManualEntry()">➕ เพิ่มบิลเอง</button>
       <button class="secondary" onclick="downloadJSON()">⬇️ Export JSON</button>
       <button class="secondary" onclick="downloadCSV()">⬇️ Export CSV</button>
       <button class="secondary" onclick="clearBills()">🗑️ ล้างทั้งหมด</button>
     </div>
+
+    <details class="settings" id="ocrSettings" open>
+      <summary>⚙️ OCR Engine: Ollama Vision / Tesseract fallback</summary>
+      <div class="form-grid">
+        <div class="field">
+          <label for="ocrEngine">OCR engine</label>
+          <select id="ocrEngine" onchange="saveOcrSettings()">
+            <option value="ollama">Ollama Vision API</option>
+            <option value="tesseract">Tesseract.js (offline)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ollamaModel">Ollama vision model</label>
+          <input id="ollamaModel" placeholder="gemma3:12b" onchange="saveOcrSettings()" />
+        </div>
+        <div class="field">
+          <label for="ollamaEndpoint">API endpoint</label>
+          <input id="ollamaEndpoint" placeholder="https://ollama.com/v1/chat/completions" onchange="saveOcrSettings()" />
+        </div>
+        <div class="field full">
+          <label for="ollamaApiKey">Ollama API key</label>
+          <input id="ollamaApiKey" type="password" autocomplete="off" placeholder="วาง API key ที่นี่ — เก็บเฉพาะใน browser นี้" onchange="saveOcrSettings()" />
+          <div class="hint">เพื่อความปลอดภัย key จะไม่ถูก hardcode ใน GitHub Pages และจะถูกเก็บใน localStorage ของเครื่องนี้เท่านั้น. ถ้าใช้ public/shared device ให้ลบ key หลังใช้.</div>
+        </div>
+      </div>
+    </details>
+
+    <div class="stats" aria-label="สรุปบิล">
+      <div class="stat-card"><div class="label">จำนวนบิล</div><div class="value" id="statCount">0</div></div>
+      <div class="stat-card"><div class="label">ยอดรวม</div><div class="value" id="statTotal">0.00</div></div>
+      <div class="stat-card"><div class="label">เฉลี่ยต่อบิล</div><div class="value" id="statAverage">0.00</div></div>
+    </div>
+
+    <section class="editor" id="billEditor" aria-live="polite">
+      <h3 id="editorTitle">ตรวจและแก้ข้อมูลบิล</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label for="editDate">วันที่</label>
+          <input id="editDate" placeholder="เช่น 23/06/2026" />
+        </div>
+        <div class="field">
+          <label for="editVendor">ผู้ออกบิล</label>
+          <input id="editVendor" placeholder="ร้านค้า / บริษัท" />
+        </div>
+        <div class="field">
+          <label for="editAmount">จำนวนเงิน (บาท)</label>
+          <input id="editAmount" inputmode="decimal" placeholder="0.00" />
+        </div>
+        <div class="field full">
+          <label for="editExtra">หมายเหตุ / ข้อความย่อ</label>
+          <textarea id="editExtra" placeholder="รายละเอียดเพิ่มเติม"></textarea>
+        </div>
+      </div>
+      <div class="confidence"><span class="pill" id="confidencePill">Manual</span><span id="confidenceText">แก้ข้อมูลก่อนบันทึกได้</span></div>
+      <div class="actions">
+        <button onclick="saveEditorBill()">💾 บันทึกบิล</button>
+        <button class="secondary" onclick="closeEditor()">ยกเลิก</button>
+      </div>
+    </section>
 
     <!-- Preview -->
     <div class="preview">
@@ -228,6 +361,7 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     let currentImage = null;
+    let pendingRawText = '';
     let bills = JSON.parse(localStorage.getItem('ocr_bills') || '[]');
 
     const dropZone   = document.getElementById('dropZone');
@@ -237,6 +371,21 @@
     const ocrBtn     = document.getElementById('ocrBtn');
     const progressBar= document.getElementById('progressBar');
     const progressFill = document.getElementById('progressFill');
+    const billEditor = document.getElementById('billEditor');
+    const editorTitle = document.getElementById('editorTitle');
+    const editDate = document.getElementById('editDate');
+    const editVendor = document.getElementById('editVendor');
+    const editAmount = document.getElementById('editAmount');
+    const editExtra = document.getElementById('editExtra');
+    const confidencePill = document.getElementById('confidencePill');
+    const confidenceText = document.getElementById('confidenceText');
+    const ocrEngine = document.getElementById('ocrEngine');
+    const ollamaModel = document.getElementById('ollamaModel');
+    const ollamaEndpoint = document.getElementById('ollamaEndpoint');
+    const ollamaApiKey = document.getElementById('ollamaApiKey');
+
+    const DEFAULT_OLLAMA_ENDPOINT = 'https://ollama.com/v1/chat/completions';
+    const DEFAULT_OLLAMA_MODEL = 'gemma3:12b';
 
     // ── File handling ──
     fileInput.addEventListener('change', e => {
@@ -267,33 +416,26 @@
       ocrBtn.disabled = true;
       ocrBtn.textContent = '⏳ กำลังอ่าน...';
       progressBar.classList.add('active');
-      progressFill.style.width = '0%';
+      progressFill.style.width = '8%';
       resultBox.classList.remove('empty');
       resultBox.textContent = 'กำลังประมวลผล OCR...';
 
       try {
-        const { data } = await Tesseract.recognize(currentImage, 'tha+eng', {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              const pct = Math.round(m.progress * 100);
-              progressFill.style.width = pct + '%';
-              resultBox.textContent = `กำลังอ่านตัวอักษร... ${pct}%`;
-            }
-          }
-        });
+        const engine = ocrEngine.value || 'ollama';
+        const ocrResult = engine === 'ollama'
+          ? await runOllamaOCR(currentImage)
+          : await runTesseractOCR(currentImage);
 
-        const rawText = data.text.trim();
-        resultBox.textContent = rawText || '(ไม่พบตัวอักษร)';
+        pendingRawText = ocrResult.rawText;
+        resultBox.textContent = ocrResult.rawText || '(ไม่พบตัวอักษร)';
 
-        // Parse bill info
-        const bill = parseBill(rawText);
+        const bill = normalizeBillFromOCR(ocrResult);
         if (bill) {
-          bills.push(bill);
-          localStorage.setItem('ocr_bills', JSON.stringify(bills));
-          renderBills();
-          showToast('บันทึกบิลเรียบร้อย ✅');
+          openEditor(bill, engine === 'ollama' ? 'ตรวจข้อมูลจาก Ollama OCR ก่อนบันทึก' : 'ตรวจข้อมูลจาก OCR ก่อนบันทึก', bill.confidence);
+          showToast('OCR เสร็จแล้ว — ตรวจข้อมูลก่อนบันทึก ✅');
         } else {
-          showToast('อ่านได้แต่ไม่สามารถ parse ข้อมูลบิล', true);
+          openEditor({ date: '', vendor: '', amount: '', extra: ocrResult.rawText.substring(0, 160), raw: ocrResult.rawText, confidence: 0 }, 'เพิ่มข้อมูลจาก OCR เอง', 0);
+          showToast('อ่านได้แต่ parse ไม่ครบ — กรุณาตรวจ/กรอกข้อมูล', true);
         }
       } catch (err) {
         resultBox.textContent = 'เกิดข้อผิดพลาด: ' + err.message;
@@ -305,78 +447,261 @@
       }
     }
 
+    async function runTesseractOCR(imageFile) {
+      const { data } = await Tesseract.recognize(imageFile, 'tha+eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 100);
+            progressFill.style.width = pct + '%';
+            resultBox.textContent = `กำลังอ่านตัวอักษร... ${pct}%`;
+          }
+        }
+      });
+      return { rawText: data.text.trim(), structured: null, confidence: 0, engine: 'tesseract' };
+    }
+
+    async function runOllamaOCR(imageFile) {
+      const apiKey = ollamaApiKey.value.trim();
+      if (!apiKey) {
+        document.getElementById('ocrSettings').open = true;
+        throw new Error('กรุณาใส่ Ollama API key ก่อนใช้ Ollama Vision OCR');
+      }
+
+      progressFill.style.width = '20%';
+      resultBox.textContent = 'กำลังส่งรูปไป Ollama Vision API...';
+      const dataUrl = await fileToDataURL(imageFile);
+      const endpoint = (ollamaEndpoint.value || DEFAULT_OLLAMA_ENDPOINT).trim();
+      const model = (ollamaModel.value || DEFAULT_OLLAMA_MODEL).trim();
+      const prompt = `Extract receipt/bill data from this image. Return ONLY minified JSON with keys: raw_text, date, vendor, amount, currency, extra, confidence.
+Rules: amount must be a number in THB if possible; date should keep original visible format; raw_text should include all useful OCR text; confidence is 0-100. Do not include markdown.`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ]
+          }],
+          temperature: 0,
+          stream: false
+        })
+      });
+
+      progressFill.style.width = '75%';
+      const payloadText = await response.text();
+      if (!response.ok) throw new Error(`Ollama API ${response.status}: ${payloadText.slice(0, 180)}`);
+      const payload = JSON.parse(payloadText);
+      const content = payload?.choices?.[0]?.message?.content || payload?.message?.content || '';
+      const structured = extractJSON(content);
+      const rawText = structured?.raw_text || structured?.rawText || content;
+      progressFill.style.width = '100%';
+      return { rawText: String(rawText || '').trim(), structured, confidence: Number(structured?.confidence) || 0, engine: 'ollama' };
+    }
+
+    function normalizeBillFromOCR(ocrResult) {
+      const structured = ocrResult.structured;
+      if (structured && (structured.amount || structured.date || structured.vendor)) {
+        const amount = normalizeAmount(structured.amount);
+        return {
+          date: structured.date || '',
+          vendor: structured.vendor || '',
+          amount: amount ?? '',
+          extra: structured.extra || ocrResult.rawText.substring(0, 160),
+          raw: ocrResult.rawText,
+          confidence: Math.min(Number(structured.confidence) || ocrResult.confidence || 70, 99)
+        };
+      }
+      return parseBill(ocrResult.rawText);
+    }
+
+    function extractJSON(content) {
+      if (!content) return null;
+      const cleaned = String(content).replace(/```json|```/g, '').trim();
+      try { return JSON.parse(cleaned); } catch (_) {}
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      try { return JSON.parse(match[0]); } catch (_) { return null; }
+    }
+
+    function fileToDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
     // ── Parse bill from OCR text ──
     function parseBill(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const fullText = text.replace(/\n/g, ' ');
+      const fullText = text.replace(/\s+/g, ' ').trim();
+      let confidence = 0;
 
-      // หาจำนวนเงิน (รองรับ 1,234.56 / 1234.56 / 1,234-)
-      const amountPatterns = [
-        /(?:ยอดรวม|รวมทั้งสิ้น|total|grand\s*total|สุทธิ|ยอด\s*สุทธิ|amount)[:\s]*([\d,]+\.\d{2})/i,
-        /([\d,]+\.\d{2})\s*(?:บาท|baht|thb)/i,
-        /(?:ยอดรวม|รวม|total|สุทธิ)\s*([\d,]+\.\d{2})/i,
-      ];
-      let amount = null;
-      for (const p of amountPatterns) {
-        const m = fullText.match(p);
-        if (m) { amount = parseFloat(m[1].replace(/,/g, '')); break; }
-      }
-      // fallback: หาเลขที่มีทศนิยม 2 ตำแหน่งที่ใหญ่ที่สุด
-      if (amount === null) {
-        const nums = fullText.match(/[\d,]+\.\d{2}/g);
-        if (nums) {
-          amount = Math.max(...nums.map(n => parseFloat(n.replace(/,/g, ''))));
-        }
-      }
+      const amount = findAmount(fullText);
+      if (amount !== null) confidence += 45;
 
-      // หาวันที่ (dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy)
-      const dateMatch = fullText.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
-      const date = dateMatch ? dateMatch[0] : '-';
+      const date = findDate(fullText);
+      if (date) confidence += 20;
 
-      // หาผู้ออกบิล (บรรทัดแรกที่ไม่ใช่ตัวเลข)
-      let vendor = '-';
-      for (const line of lines.slice(0, 8)) {
-        if (!/^\d/.test(line) && line.length > 2 && !/receipt|tax/i.test(line)) {
-          vendor = line.substring(0, 40);
-          break;
-        }
+      let vendor = '';
+      const vendorKeywords = /(บริษัท|บจก|หจก|ร้าน|สาขา|company|co\.?|ltd\.?|store|market|cafe|coffee|restaurant)/i;
+      const ignored = /(receipt|tax invoice|ใบเสร็จ|ใบกำกับ|เลขที่|วันที่|date|tel|โทร|vat|total|ยอดรวม|รวม|บาท|thb)/i;
+      for (const line of lines.slice(0, 10)) {
+        const clean = line.replace(/[|_*~=]+/g, ' ').trim();
+        if (clean.length < 3 || /^\d/.test(clean) || ignored.test(clean)) continue;
+        vendor = clean.substring(0, 60);
+        if (vendorKeywords.test(clean)) confidence += 20;
+        else confidence += 10;
+        break;
       }
 
-      if (amount !== null) {
-        return { date, vendor, amount, extra: fullText.substring(0, 80), raw: text };
+      if (amount !== null || date || vendor) {
+        return {
+          date: date || '',
+          vendor: vendor || '',
+          amount: amount ?? '',
+          extra: fullText.substring(0, 160),
+          raw: text,
+          confidence: Math.min(confidence, 95)
+        };
       }
       return null;
+    }
+
+    function findAmount(fullText) {
+      const patterns = [
+        /(?:ยอด\s*สุทธิ|รวมทั้งสิ้น|ยอดรวม|จำนวนเงินรวม|grand\s*total|net\s*total|total|amount\s*due|amount)\D{0,18}([\d,]+(?:\.\d{1,2})?)/i,
+        /([\d,]+\.\d{2})\s*(?:บาท|baht|thb)/i,
+        /(?:บาท|baht|thb)\s*([\d,]+(?:\.\d{1,2})?)/i
+      ];
+      for (const p of patterns) {
+        const m = fullText.match(p);
+        if (m) return normalizeAmount(m[1]);
+      }
+      const nums = [...fullText.matchAll(/\b\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?\b|\b\d+\.\d{2}\b/g)]
+        .map(m => normalizeAmount(m[0]))
+        .filter(n => Number.isFinite(n) && n > 0 && n < 10000000);
+      return nums.length ? Math.max(...nums) : null;
+    }
+
+    function normalizeAmount(value) {
+      const n = parseFloat(String(value).replace(/,/g, ''));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+    }
+
+    function findDate(fullText) {
+      const numeric = fullText.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b/);
+      if (numeric) return numeric[0];
+      const iso = fullText.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+      if (iso) return iso[0];
+      const thaiMonth = '(ม.ค.|ก.พ.|มี.ค.|เม.ย.|พ.ค.|มิ.ย.|ก.ค.|ส.ค.|ก.ย.|ต.ค.|พ.ย.|ธ.ค.)';
+      const thai = fullText.match(new RegExp('\\b\\d{1,2}\\s*' + thaiMonth + '\\s*\\d{2,4}', 'i'));
+      return thai ? thai[0] : '';
     }
 
     // ── Render bills table ──
     function renderBills() {
       const body = document.getElementById('billsBody');
+      updateStats();
       if (bills.length === 0) {
         body.innerHTML = '<tr class="empty-row"><td colspan="6">ยังไม่มีบิล — อัปโหลดรูปแล้วกด OCR เพื่อเริ่ม</td></tr>';
         return;
       }
       let html = '';
       bills.forEach((b, i) => {
+        const amount = Number(b.amount) || 0;
         html += `<tr>
           <td>${i + 1}</td>
-          <td>${b.date}</td>
-          <td>${b.vendor}</td>
-          <td style="text-align:right">${b.amount.toLocaleString('th-TH', {minimumFractionDigits:2})}</td>
-          <td style="color:var(--muted);font-size:.8rem">${b.extra}</td>
+          <td>${escapeHTML(b.date || '-')}</td>
+          <td>${escapeHTML(b.vendor || '-')}</td>
+          <td style="text-align:right">${amount.toLocaleString('th-TH', {minimumFractionDigits:2})}</td>
+          <td style="color:var(--muted);font-size:.8rem">${escapeHTML(b.extra || '')}</td>
           <td class="actions-row">
             <button class="secondary" onclick="viewBill(${i})">ดู</button>
             <button class="secondary" onclick="deleteBill(${i})" style="color:var(--danger)">✕</button>
           </td>
         </tr>`;
       });
-      const total = bills.reduce((s, b) => s + b.amount, 0);
+      const total = bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
       html += `<tr class="total-row"><td colspan="3">ยอดรวมทั้งหมด</td><td style="text-align:right">${total.toLocaleString('th-TH', {minimumFractionDigits:2})}</td><td colspan="2"></td></tr>`;
       body.innerHTML = html;
+    }
+
+    function updateStats() {
+      const total = bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+      const avg = bills.length ? total / bills.length : 0;
+      document.getElementById('statCount').textContent = bills.length.toLocaleString('th-TH');
+      document.getElementById('statTotal').textContent = total.toLocaleString('th-TH', { minimumFractionDigits: 2 });
+      document.getElementById('statAverage').textContent = avg.toLocaleString('th-TH', { minimumFractionDigits: 2 });
+    }
+
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     }
 
     function viewBill(i) {
       resultBox.classList.remove('empty');
       resultBox.textContent = bills[i].raw || bills[i].extra;
+      openEditor(bills[i], 'แก้ไขบิล #' + (i + 1), bills[i].confidence || 0, i);
+    }
+
+    function openManualEntry() {
+      pendingRawText = '';
+      resultBox.classList.remove('empty');
+      resultBox.textContent = 'เพิ่มบิลเองโดยไม่ต้อง OCR';
+      openEditor({ date: '', vendor: '', amount: '', extra: '', raw: '', confidence: 0 }, 'เพิ่มบิลเอง', 0);
+    }
+
+    function openEditor(bill, title, confidence, index = null) {
+      billEditor.dataset.index = index === null ? '' : String(index);
+      editorTitle.textContent = title;
+      editDate.value = bill.date || '';
+      editVendor.value = bill.vendor || '';
+      editAmount.value = bill.amount === '' || bill.amount === undefined ? '' : Number(bill.amount).toFixed(2);
+      editExtra.value = bill.extra || '';
+      confidencePill.textContent = confidence ? `OCR ${confidence}%` : 'Manual';
+      confidenceText.textContent = confidence >= 70 ? 'ความมั่นใจสูง แต่ควรตรวจยอดเงินก่อนบันทึก' : 'ควรตรวจ/แก้ข้อมูลก่อนบันทึก';
+      billEditor.classList.add('active');
+      editVendor.focus();
+    }
+
+    function closeEditor() {
+      billEditor.classList.remove('active');
+      billEditor.dataset.index = '';
+    }
+
+    function saveEditorBill() {
+      const amount = normalizeAmount(editAmount.value);
+      if (!editVendor.value.trim()) return showToast('กรุณากรอกผู้ออกบิล', true);
+      if (amount === null || amount <= 0) return showToast('กรุณากรอกจำนวนเงินให้ถูกต้อง', true);
+
+      const bill = {
+        date: editDate.value.trim() || '-',
+        vendor: editVendor.value.trim(),
+        amount,
+        extra: editExtra.value.trim() || `${editVendor.value.trim()} ${amount.toFixed(2)}`,
+        raw: pendingRawText || resultBox.textContent || editExtra.value.trim(),
+        confidence: confidencePill.textContent.startsWith('OCR') ? parseInt(confidencePill.textContent.replace(/\D/g, ''), 10) || 0 : 0,
+        savedAt: new Date().toISOString()
+      };
+
+      const idx = billEditor.dataset.index === '' ? -1 : Number(billEditor.dataset.index);
+      if (idx >= 0) bills[idx] = { ...bills[idx], ...bill };
+      else bills.push(bill);
+
+      localStorage.setItem('ocr_bills', JSON.stringify(bills));
+      renderBills();
+      closeEditor();
+      showToast(idx >= 0 ? 'อัปเดตบิลแล้ว ✅' : 'บันทึกบิลเรียบร้อย ✅');
     }
 
     function deleteBill(i) {
@@ -404,20 +729,26 @@
 
     function downloadCSV() {
       if (bills.length === 0) return showToast('ไม่มีบิลให้ export', true);
-      let csv = 'No,Date,Vendor,Amount,Extra\n';
+      let csv = '\ufeffNo,Date,Vendor,Amount,Extra,SavedAt\n';
       bills.forEach((b, i) => {
-        csv += `${i+1},"${b.date}","${b.vendor}",${b.amount},"${b.extra.replace(/"/g,'""')}"\n`;
+        csv += `${i+1},"${csvEscape(b.date)}","${csvEscape(b.vendor)}",${Number(b.amount) || 0},"${csvEscape(b.extra)}","${csvEscape(b.savedAt || '')}"\n`;
       });
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       triggerDownload(blob, 'bills.csv');
+    }
+
+    function csvEscape(value) {
+      return String(value ?? '').replace(/"/g, '""');
     }
 
     function triggerDownload(blob, filename) {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = filename;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
 
     // ── Toast ──
@@ -428,7 +759,29 @@
       setTimeout(() => t.classList.remove('show'), 3000);
     }
 
+    function saveOcrSettings() {
+      const settings = {
+        engine: ocrEngine.value || 'ollama',
+        endpoint: (ollamaEndpoint.value || DEFAULT_OLLAMA_ENDPOINT).trim(),
+        model: (ollamaModel.value || DEFAULT_OLLAMA_MODEL).trim(),
+        apiKey: ollamaApiKey.value.trim()
+      };
+      localStorage.setItem('ocr_settings', JSON.stringify(settings));
+      if (settings.engine === 'ollama' && !settings.apiKey) {
+        showToast('Ollama mode ต้องใส่ API key ก่อนใช้งาน', true);
+      }
+    }
+
+    function loadOcrSettings() {
+      const settings = JSON.parse(localStorage.getItem('ocr_settings') || '{}');
+      ocrEngine.value = settings.engine || 'ollama';
+      ollamaEndpoint.value = settings.endpoint || DEFAULT_OLLAMA_ENDPOINT;
+      ollamaModel.value = settings.model || DEFAULT_OLLAMA_MODEL;
+      ollamaApiKey.value = settings.apiKey || '';
+    }
+
     // init
+    loadOcrSettings();
     renderBills();
   </script>
 </body>
