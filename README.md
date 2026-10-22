@@ -1,3 +1,15 @@
+<!-- BBN:HEADER:START -->
+<div align="center">
+
+<img src=".github/brand/banner.svg" width="100%" alt="OCR Bill Manager · Hermes — Bill manager: OCR receipts via Ollama or Tesseract.js" />
+
+<a href="https://github.com/Boom-Vitt/ocr-bill-hermes-glm52/stargazers"><img src="https://img.shields.io/github/stars/Boom-Vitt/ocr-bill-hermes-glm52?style=flat-square&color=14b8a6&labelColor=0b1220" alt="stars" /></a>
+<a href="https://github.com/Boom-Vitt/ocr-bill-hermes-glm52/commits/main"><img src="https://img.shields.io/github/last-commit/Boom-Vitt/ocr-bill-hermes-glm52?style=flat-square&color=14b8a6&labelColor=0b1220" alt="last commit" /></a>
+<a href="https://github.com/Boom-Vitt"><img src="https://img.shields.io/badge/by-BoomBigNose-14b8a6?style=flat-square&labelColor=0b1220" alt="by BoomBigNose" /></a>
+
+</div>
+<!-- BBN:HEADER:END -->
+
 # OCR Bill Manager
 
 เว็บไซต์สำหรับจัดการบิลเงินโดยใช้ OCR (Optical Character Recognition) อ่านตัวอักษรจากรูปบิล/ใบเสร็จและแปลงเป็นข้อมูลที่จัดการได้
@@ -36,3 +48,15 @@
 ## สร้างโดย
 
 Hermes Agent (GLM-5.2 via Ollama Cloud)
+
+<!-- BBN:FOOTER:START -->
+---
+
+<div align="center">
+
+**สร้างโดย [BoomBigNose](https://github.com/Boom-Vitt)** · [Kruoop.com](https://kruoop.com) แหล่งเรียน AI + คอมมูนิตี้ · [Seeneo.ai](https://seeneo.ai) · [YouTube 220K](https://www.youtube.com/@BoomBigNose)
+
+<sub>ถ้าโปรเจกต์นี้มีประโยชน์ กด ⭐ ให้กำลังใจกันได้เลย</sub>
+
+</div>
+<!-- BBN:FOOTER:END -->
